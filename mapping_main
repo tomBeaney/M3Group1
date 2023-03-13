@@ -1,0 +1,60 @@
+"""Mapping code for raspberry pi , modified and written by Abinsha Vahab"""
+
+
+
+
+import sys
+import time
+from math import pi
+import pygame
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import RPi.GPIO as GPIO
+from rplidar import RPLidar
+MAP_SIZE_PIXELS         = 800
+MAP_SIZE_METERS         = 16
+MAP_RESOLUTION          = MAP_SIZE_PIXELS/MAP_SIZE_METERS
+MAP_ORIGIN_PIXELS       = (int(MAP_SIZE_PIXELS/2),int(MAP_SIZE_PIXELS/2))
+MAP_ORIGIN_METERS       = (MAP_SIZE_METERS/2,MAP_SIZE_METERS/2)
+WINDOW_SIZE_PIXELS      = (MAP_SIZE_PIXELS,MAP_SIZE_PIXELS)
+WINDOW_BACKGROUND_COLOR = pygame.Color('black')
+#pygame window intialisation
+pygame.init()
+pygame.display.set_caption('RPLidar mapping')
+screen = pygame.display.set_mode(WINDOW_SIZE_PIXELS)
+screen.fill(WINDOW_BACKGROUND_COLOR)
+pygame.display.flip()
+#data acquisitioln function
+def acquire_rplidar_data(port='/dev/ttyUSB0', baudrate=115200, timeout=1):
+    lidar = RPLidar(port, baudrate, timeout)
+    lidar.start_motor()
+    time.sleep(2)
+    lidar.stop_motor()
+    time.sleep(2)
+    lidar.connect()
+    lidar.start_motor()
+    lidar.start_scan()
+    data = []
+    for _ in range(360):
+        data.append(next(lidar.iter_measurments()))
+    lidar.stop()
+    lidar.disconnect()
+    return data
+def transform_data_to_map(data):
+    map_size = int(MAP_SIZE_PIXELS)
+    map_resolution = int(MAP_RESOLUTION)
+    map = np.zeros((map_size,map_size),dtype=np.uint8)
+    for angle, distance, _ in data:
+        if distance < 2000:
+            x = int((np.cos(np.radians(angle)) * distance * map_resolution) + MAP_ORIGIN_PIXELS[0])
+            y = int((np.sin(np.radians(angle)) * distance * map_resolution) + MAP_ORIGIN_PIXELS[1])
+            if x >= 0 and x < map_size and y >= 0 and y < map_size:
+                map[x,y] = 255
+    return map
+#loop displays the map
+while True:
+    data = acquire_rplidar_data()
+    map = transform_data_to_map(data)
+    pygame.surfarray.blit_array(screen, map)
+    pygame.display.update()
